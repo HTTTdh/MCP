@@ -1,37 +1,78 @@
 # uvicorn agent:app --reload --port 3003
-import json
 import os
-from typing import Any
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request
-from google.oauth2.service_account import Credentials
+from fastapi.responses import RedirectResponse
+from jose import jwt
 from pydantic import BaseModel
 from agents import Agent, Runner
 from agents.mcp import MCPServerStdio
-from datetime import datetime
+from datetime import datetime, timedelta
 import pytz
 from fastapi.middleware.cors import CORSMiddleware
-import requests
+from starlette.middleware.sessions import SessionMiddleware
+from authlib.integrations.starlette_client import OAuth
+import logging
+logging.basicConfig(level=logging.INFO)
+
 load_dotenv()
 app = FastAPI()
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["http://localhost:5173"], 
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 def get_current_time_str():
     now = datetime.now(pytz.timezone("Asia/Ho_Chi_Minh"))
     return now.isoformat()
 
+FE_ORIGIN = os.getenv("FRONTEND_URL")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[FE_ORIGIN],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=os.getenv("SECRET_KEY"),
+)
+
+oauth = OAuth()
+oauth.register(
+    name="google",
+    client_id=os.getenv("GOOGLE_CLIENT_ID"),
+    client_secret=os.getenv("GOOGLE_CLIENT_SECRET"),
+    server_metadata_url="https://accounts.google.com/.well-known/openid-configuration",
+    client_kwargs={"scope": "openid email profile"},
+)
+
+SECRET_KEY = os.getenv("SECRET_KEY")
+ALGORITHM  = "HS256"
+
+def create_token(userinfo: dict) -> str:
+    payload = {
+        "sub": userinfo["email"],
+        "name": userinfo["name"],
+        "exp": datetime.utcnow() + timedelta(hours=6),
+    }
+    return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
+
+
+@app.get("/auth/google")
+async def login(request: Request):
+    redirect_uri = request.url_for("auth_callback")
+    return await oauth.google.authorize_redirect(request, redirect_uri)
+
+@app.get("/auth/callback")
+async def auth_callback(request: Request):
+    token_data = await oauth.google.authorize_access_token(request)
+    resp = await oauth.google.get("https://www.googleapis.com/oauth2/v3/userinfo", token=token_data)
+    user = resp.json()
+    jwt_token = create_token(user)
+    print(jwt_token)
+    redirect_url = f"{FE_ORIGIN}/login-success?token={jwt_token}"
+    return RedirectResponse(url=redirect_url)
+
 class MessageRequest(BaseModel):
     message: str
-
-import logging
-logging.basicConfig(level=logging.INFO)
-
 @app.post("/agent")
 async def run_agent(req: MessageRequest):
     message = req.message
@@ -81,31 +122,32 @@ async def run_agent(req: MessageRequest):
         logging.exception("Agent failed")
         return {"error": str(e)}
 
-class GetEventRequest(BaseModel):
-    start: str  
-    end: str   
+# class GetEventRequest(BaseModel):
+#     start: str  
+#     end: str   
     
-@app.post("/getEventByDate")
-async def get_event(req: GetEventRequest):
-    print("token: " + token)
-    if not token:
-        raise Exception("Unable to get Google access token")
+# @app.post("/getEventByDate")
+# async def get_event(req: GetEventRequest):
+#     print("token: " + token)
+#     if not token:
+#         raise Exception("Unable to get Google access token")
 
-    url = "https://www.googleapis.com/calendar/v3/freeBusy"
-    headers = {
-        "Content-Type": "application/json",
-        "Authorization": f"Bearer {token}"
-    }
-    body = {
-        "timeMin": req.start,
-        "timeMax": req.end,
-        "timeZone": "Asia/Ho_Chi_Minh",
-        "items": [{"id": "primary"}]
-    }
+#     url = "https://www.googleapis.com/calendar/v3/freeBusy"
+#     headers = {
+#         "Content-Type": "application/json",
+#         "Authorization": f"Bearer {token}"
+#     }
+#     body = {
+#         "timeMin": req.start,
+#         "timeMax": req.end,
+#         "timeZone": "Asia/Ho_Chi_Minh",
+#         "items": [{"id": "primary"}]
+#     }
 
-    response = requests.post(url, headers=headers, data=json.dumps(body))
+#     response = requests.post(url, headers=headers, data=json.dumps(body))
 
-    if not response.ok:
-        raise Exception(f"{response.status_code} : {response.text}")
+#     if not response.ok:
+#         raise Exception(f"{response.status_code} : {response.text}")
 
-    return response.json()
+#     return response.json()
+
