@@ -6,16 +6,7 @@ import {
   ListToolsRequestSchema,
   Tool,
 } from "@modelcontextprotocol/sdk/types.js";
-import { google } from "googleapis";
-import {readFile} from "node:fs/promises";
-import * as fs from "fs/promises";
-
-const CLIENT_ID = process.env.CLIENT_ID;
-const CLIENT_SECRET = process.env.CLIENT_SECRET;
-const REDIRECT_URI = process.env.REDIRECT_URI;
-const SCOPES = process.env.SCOPES;
-
-const TOKEN_PATH = "../mcp-server/token.json";
+import { token } from "../../agent/token.js" 
 
 const CREATE_EVENT: Tool  = {
   name: "create_event",
@@ -35,15 +26,6 @@ const CREATE_EVENT: Tool  = {
     },
   },
 };
-
-const GET_ACESS_TOKEN: Tool = {
-  name: "get_access_token",
-  description: "Lấy access token Google Calendar",
-  inputSchema: {
-    type: "object",
-    properties:{}
-  }
-}
 
 const CREATE_EVENT_QUICK: Tool = {
   name: "create_event_quick",
@@ -115,19 +97,8 @@ const MOVE_EVENT: Tool = {
   },
   required: ["id"]
 }
-const TOOLS = [CREATE_EVENT, GET_ACESS_TOKEN, CREATE_EVENT_QUICK, GET_EVENT, UPDATE_EVENT, BUSY, MOVE_EVENT];
+const TOOLS = [CREATE_EVENT, CREATE_EVENT_QUICK, GET_EVENT, UPDATE_EVENT, BUSY, MOVE_EVENT];
 
-async function getAuthClient() {
-  const oauth2 = new google.auth.OAuth2(
-    CLIENT_ID,
-    CLIENT_SECRET,
-    REDIRECT_URI
-  );
-
-  const token = await fs.readFile(TOKEN_PATH, "utf8");
-  oauth2.setCredentials(JSON.parse(token));
-  return oauth2;
-}
 async function createCalendarEvent(input: {
   summary: string;
   startISO: string;
@@ -135,17 +106,13 @@ async function createCalendarEvent(input: {
   description?: string;
   attendees?: string[];
 }) {
-  const auth = await getAuthClient();
-  const access = await auth.getAccessToken();
-  if (!access?.token) throw new Error("Unable to get Google access token");
-
   const res = await fetch(
     "https://www.googleapis.com/calendar/v3/calendars/primary/events?conferenceDataVersion=1",
     {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${access.token}`,
+        Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify({
         summary: input.summary,
@@ -168,21 +135,18 @@ async function createCalendarEvent(input: {
     throw new Error(`Calendar API error ${res.status}: ${await res.text()}`);
   }
 
-  return await res.json(); // chính là đối tượng Event
+  return await res.json(); 
 }
 async function createEventQuick(text: string) {
-  const auth = await getAuthClient();
-  const access = await auth.getAccessToken();
-  if (!access?.token) throw new Error("Unable to get Google access token");
   const respone = await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events/quickAdd?text=${text}`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "Authorization": `Bearer ${access.token}`,
+      "Authorization": `Bearer ${token}`,
     }
   })
   if (!respone.ok) {
-    throw new Error(`${respone.status}`);
+    throw new Error(`${respone.status}` + `${token}`);
   }
   return respone.json();
 }
@@ -201,21 +165,15 @@ async function getEvent(input: {
   timeMax?: string;
   q: string;
 }) {
-  const auth = await getAuthClient();
-  const access = await auth.getAccessToken();
-  if (!access?.token) throw new Error("Unable to get Google access token");
-  return await searchCalendarEvents(input.q, access.token);
+  return await searchCalendarEvents(input.q, token);
 }
 async function getEventById(id: string) {
-  const auth = await getAuthClient();
-  const access = await auth.getAccessToken();
-  if (!access?.token) throw new Error("Unable to get Google access token");
   const res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events/${id}`,
     {
       method: "GET",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${access.token}`,
+        Authorization: `Bearer ${token}`,
       }
     }
   )
@@ -231,15 +189,12 @@ async function updateEvent(input: {
   description?: string;
   attendees?: string[];
 }) {
-  const auth = await getAuthClient();
-  const access = await auth.getAccessToken();
-  if (!access?.token) throw new Error("Unable to get Google access token");
   const oldEvent = await getEventById(input.id);
   const respone = await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events/${input.id}`, {
     method: "PUT",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${access.token}`,
+      Authorization: `Bearer ${token}`,
     },
     body: JSON.stringify(
       {
@@ -258,14 +213,11 @@ async function updateEvent(input: {
   return respone.json();
 }
 async function freeBusy(timeMax: string, timeMin: string) {
-  const auth = await getAuthClient();
-  const access = await auth.getAccessToken();
-  if (!access?.token) throw new Error("Unable to get Google access token");
   const res = await fetch(`https://www.googleapis.com/calendar/v3/freeBusy`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${access.token}`,
+      Authorization: `Bearer ${token}`,
     },
     body: JSON.stringify({
       "timeMax": timeMax,
@@ -280,14 +232,12 @@ async function freeBusy(timeMax: string, timeMin: string) {
   return await res.json();
 }
 async function moveEvent(id: string, timeMax?: string, timeMin?: string) {
-  const auth = await getAuthClient();
-  const access = await auth.getAccessToken();
   const oldEvent = await getEventById(id);
   const respone = await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events/${id}`, {
     method: "PATCH",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${access.token}`,
+      Authorization: `Bearer ${token}`,
     },
     body: JSON.stringify({
       "start": {
@@ -307,7 +257,6 @@ const server = new Server(
   { name: "mcp_server", version: "1.0.0" },
   { capabilities: { tools: {} } },      
 );
-
 server.setRequestHandler(ListToolsRequestSchema, async () => ({
   tools: TOOLS,
 }));
@@ -325,17 +274,6 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
             },
           ],
         };
-      }
-      case "get_access_token": {
-        const token = await getAuthClient();
-        return {
-          content: [
-            {
-              type: "text",
-              text: (await token.getAccessToken()).token,
-            }
-          ]
-        }
       }
       case "create_event_quick": {
         const respone = await createEventQuick(req.params.arguments?.text as string)

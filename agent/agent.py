@@ -14,6 +14,20 @@ from starlette.middleware.sessions import SessionMiddleware
 from authlib.integrations.starlette_client import OAuth
 import logging
 logging.basicConfig(level=logging.INFO)
+from pathlib import Path
+import json, stat
+
+TOKEN_FILE = Path(__file__).with_name("token.js")  
+def save_token_js(token_data: dict) -> Path:
+    import datetime 
+    js_code = (
+        f"// Auto‑generated at {datetime.datetime.utcnow().isoformat()}Z\n"
+        f"export const token = {json.dumps(token_data, ensure_ascii=False, indent=2)};\n"
+    )
+    TOKEN_FILE.write_text(js_code, encoding="utf-8")
+
+    TOKEN_FILE.chmod(stat.S_IRUSR | stat.S_IWUSR)
+    return TOKEN_FILE
 
 load_dotenv()
 app = FastAPI()
@@ -41,7 +55,7 @@ oauth.register(
     client_id=os.getenv("GOOGLE_CLIENT_ID"),
     client_secret=os.getenv("GOOGLE_CLIENT_SECRET"),
     server_metadata_url="https://accounts.google.com/.well-known/openid-configuration",
-    client_kwargs={"scope": "openid email profile"},
+    client_kwargs={"scope": "openid email profile https://www.googleapis.com/auth/calendar.events"},
 )
 
 SECRET_KEY = os.getenv("SECRET_KEY")
@@ -64,10 +78,11 @@ async def login(request: Request):
 @app.get("/auth/callback")
 async def auth_callback(request: Request):
     token_data = await oauth.google.authorize_access_token(request)
+    access_token = token_data["access_token"]
+    save_token_js(access_token) 
     resp = await oauth.google.get("https://www.googleapis.com/oauth2/v3/userinfo", token=token_data)
     user = resp.json()
     jwt_token = create_token(user)
-    print(jwt_token)
     redirect_url = f"{FE_ORIGIN}/login-success?token={jwt_token}"
     return RedirectResponse(url=redirect_url)
 

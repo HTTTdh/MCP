@@ -1,0 +1,2 @@
+// Auto‑generated at 2025-07-09T08:46:42.123652Z
+export const token = "ya29.a0AS3H6NzFoBlk2OKvjVkj3fAwuH8OUJbaiyWGhHmwpepDaoR_nrR6lR1mtUhYyNm04kNspwo3vp5A6k0raxV4ATHRrNAm_pE0toT-2BYJl9rOJH5k4hOXc5R4MSl-afjAuHTIgQJoJbzBBUNEjbI2FOrbBCXLAVKxINQCB0jiaCgYKATUSARUSFQHGX2MibD5NpoOIHV3ynathyyLelg0175";
