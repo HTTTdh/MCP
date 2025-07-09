@@ -3,7 +3,6 @@ import os
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request
 from fastapi.responses import RedirectResponse
-from jose import jwt
 from pydantic import BaseModel
 from agents import Agent, Runner
 from agents.mcp import MCPServerStdio
@@ -58,18 +57,6 @@ oauth.register(
     client_kwargs={"scope": "openid email profile https://www.googleapis.com/auth/calendar.events"},
 )
 
-SECRET_KEY = os.getenv("SECRET_KEY")
-ALGORITHM  = "HS256"
-
-def create_token(userinfo: dict) -> str:
-    payload = {
-        "sub": userinfo["email"],
-        "name": userinfo["name"],
-        "exp": datetime.utcnow() + timedelta(hours=6),
-    }
-    return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
-
-
 @app.get("/auth/google")
 async def login(request: Request):
     redirect_uri = request.url_for("auth_callback")
@@ -80,10 +67,7 @@ async def auth_callback(request: Request):
     token_data = await oauth.google.authorize_access_token(request)
     access_token = token_data["access_token"]
     save_token_js(access_token) 
-    resp = await oauth.google.get("https://www.googleapis.com/oauth2/v3/userinfo", token=token_data)
-    user = resp.json()
-    jwt_token = create_token(user)
-    redirect_url = f"{FE_ORIGIN}/login-success?token={jwt_token}"
+    redirect_url = f"{FE_ORIGIN}/login-success?token={access_token}"
     return RedirectResponse(url=redirect_url)
 
 class MessageRequest(BaseModel):
