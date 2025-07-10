@@ -12,7 +12,7 @@ export default function LoginSuccess() {
     if (token) {
       localStorage.setItem("jwt", token);
       // TODO: Gọi API /me để lấy thông tin user nếu cần
-      navigate("/"); // chuyển về trang chính
+      navigate("/home"); // chuyển về trang chính
     }
   }, []);
 

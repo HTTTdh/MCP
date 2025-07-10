@@ -1,13 +1,14 @@
 # uvicorn agent:app --reload --port 3003
 import os
 from dotenv import load_dotenv
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request, requests
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 from agents import Agent, Runner
 from agents.mcp import MCPServerStdio
 from datetime import datetime, timedelta
 import pytz
+import requests
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 from authlib.integrations.starlette_client import OAuth
@@ -54,7 +55,7 @@ oauth.register(
     client_id=os.getenv("GOOGLE_CLIENT_ID"),
     client_secret=os.getenv("GOOGLE_CLIENT_SECRET"),
     server_metadata_url="https://accounts.google.com/.well-known/openid-configuration",
-    client_kwargs={"scope": "openid email profile https://www.googleapis.com/auth/calendar.events"},
+    client_kwargs={"scope": "openid email profile https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/calendar.events"},
 )
 
 @app.get("/auth/google")
@@ -66,7 +67,11 @@ async def login(request: Request):
 async def auth_callback(request: Request):
     token_data = await oauth.google.authorize_access_token(request)
     access_token = token_data["access_token"]
+    os.environ['TOKEN'] = access_token
     save_token_js(access_token) 
+    from dotenv import set_key
+    dotenv_path = Path(__file__).with_name(".env")
+    set_key(str(dotenv_path), "TOKEN", access_token)
     redirect_url = f"{FE_ORIGIN}/login-success?token={access_token}"
     return RedirectResponse(url=redirect_url)
 
@@ -121,32 +126,40 @@ async def run_agent(req: MessageRequest):
         logging.exception("Agent failed")
         return {"error": str(e)}
 
-# class GetEventRequest(BaseModel):
-#     start: str  
-#     end: str   
+class GetEventRequest(BaseModel):
+    start: str  
+    end: str   
     
-# @app.post("/getEventByDate")
-# async def get_event(req: GetEventRequest):
-#     print("token: " + token)
-#     if not token:
-#         raise Exception("Unable to get Google access token")
+@app.post("/getEventByDate")
+async def get_event(req: GetEventRequest):
+    token = os.getenv("TOKEN")
+    if not token:
+        raise HTTPException(status_code=401, detail="Missing Google access token")
 
-#     url = "https://www.googleapis.com/calendar/v3/freeBusy"
-#     headers = {
-#         "Content-Type": "application/json",
-#         "Authorization": f"Bearer {token}"
-#     }
-#     body = {
-#         "timeMin": req.start,
-#         "timeMax": req.end,
-#         "timeZone": "Asia/Ho_Chi_Minh",
-#         "items": [{"id": "primary"}]
-#     }
+    url = "https://www.googleapis.com/calendar/v3/calendars/primary/events"
+    headers = {
+        "Authorization": f"Bearer {token}"
+    }
+    params = {
+        "timeMin": req.start,
+        "timeMax": req.end,
+        "timeZone": "Asia/Ho_Chi_Minh",
+        "singleEvents": "true",
+        "orderBy": "startTime"
+    }
 
-#     response = requests.post(url, headers=headers, data=json.dumps(body))
+    response = requests.get(url, headers=headers, params=params)
 
-#     if not response.ok:
-#         raise Exception(f"{response.status_code} : {response.text}")
+    print("Status Code:", response.status_code)
+    print("Response:", response.text)
 
-#     return response.json()
+    if not response.ok:
+        raise HTTPException(
+            status_code=response.status_code,
+            detail=f"Google Calendar API error: {response.text}"
+        )
 
+    data = response.json()
+    events = data.get("items", [])
+
+    return {"events": events}

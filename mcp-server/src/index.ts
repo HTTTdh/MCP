@@ -155,7 +155,7 @@ async function searchCalendarEvents(keyword: string, access: string) {
   const data = await res.json();
 
   const results = data.items.filter((event: any) =>
-    event.summary?.toLowerCase().includes(keyword.toLowerCase())
+    event.summary?.toLowerCase().includes(keyword?.toLowerCase())
   );
 
   return results;
