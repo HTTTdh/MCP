@@ -37,6 +37,13 @@ Dự án này bao gồm một **MCP Server** và một **Agent sử dụng OpenA
 - Cần có thông tin xác thực Google (OAuth 2.0) để sử dụng API Calendar.
 - Hiện tại chỉ hỗ trợ tích hợp với Google Calendar, các nền tảng khác sẽ được bổ sung trong tương lai.
 
-## 👤 Tác giả
+## 💻 Giao diện 
 
-Thu Thanh – 2025
+<img width="1917" height="952" alt="image" src="https://github.com/user-attachments/assets/0ca3ec09-f534-4aa3-98ba-c3392a38a3f7" />
+
+## 📽️ Demo
+
+link drive: https://drive.google.com/file/d/168UuFf8lzC1UACD-XRM8VCu4CjZGZXkb/view?usp=sharing 
+
+
+
